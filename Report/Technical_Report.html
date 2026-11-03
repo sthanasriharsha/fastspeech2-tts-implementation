@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Technical Report: FastSpeech 2-Based Text-to-Speech Synthesis</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 18mm 20mm 18mm;
+  }
+  body {
+    font-family: 'Segoe UI', 'Nirmala UI', 'Gautami', 'Noto Sans Telugu', Tahoma, Geneva, Verdana, sans-serif;
+    color: #24292e;
+    line-height: 1.6;
+    font-size: 11pt;
+    padding: 0;
+    margin: 0;
+  }
+  h1 {
+    font-size: 20pt;
+    color: #1a365d;
+    border-bottom: 2px solid #2b6cb0;
+    padding-bottom: 6px;
+    margin-top: 0;
+  }
+  h2 {
+    font-size: 14pt;
+    color: #2b6cb0;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4px;
+    margin-top: 18pt;
+  }
+  h3 {
+    font-size: 12pt;
+    color: #2d3748;
+    margin-top: 12pt;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12pt 0;
+    font-size: 10pt;
+  }
+  th, td {
+    border: 1px solid #cbd5e0;
+    padding: 6pt 8pt;
+    text-align: left;
+  }
+  th {
+    background-color: #ebf8ff;
+    color: #2b6cb0;
+    font-weight: 600;
+  }
+  tr:nth-child(even) {
+    background-color: #f7fafc;
+  }
+  code, pre {
+    font-family: Consolas, 'Courier New', Courier, monospace;
+    background-color: #edf2f7;
+    border-radius: 3px;
+  }
+  pre {
+    padding: 8pt 10pt;
+    font-size: 9.5pt;
+    overflow-x: auto;
+    border-left: 4px solid #3182ce;
+  }
+  .telugu-text {
+    font-family: 'Nirmala UI', 'Gautami', 'Noto Sans Telugu', sans-serif;
+    font-size: 11pt;
+    color: #1a202c;
+  }
+  .meta-box {
+    background-color: #f7fafc;
+    border: 1px solid #e2e8f0;
+    padding: 8pt 12pt;
+    border-radius: 4px;
+    margin-bottom: 15pt;
+    font-size: 10pt;
+  }
+  ul, ol {
+    padding-left: 20px;
+  }
+  li {
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Technical Report: FastSpeech 2-Based Text-to-Speech Synthesis</h1>
+
+<div class="meta-box">
+  <strong>Course / Topic:</strong> Implementation & Evaluation of FastSpeech 2 TTS for English and Telugu<br>
+  <strong>Target Datasets:</strong> AI4Bharat Svarah (English) & IndicTTS Telugu (Telugu)<br>
+  <strong>Model Paradigm:</strong> Non-Autoregressive Feed-Forward Transformer with Variance Adaptor<br>
+  <strong>Submission Date:</strong> November 2026
+</div>
+
+<h2>1. Executive Summary</h2>
+<p>
+This project implements, evaluates, and compares two independent FastSpeech 2 models trained on English (Svarah corpus) and Telugu (IndicTTS corpus). We leverage a non-autoregressive feed-forward Transformer architecture equipped with a Variance Adaptor consisting of Duration, Pitch (F0), and Energy predictors. The models are evaluated across challenging test sentences designed to evaluate linguistic stress, polysemy, compound loanwords, tokenization formatting artifacts, and cross-lingual code-mixing.
+</p>
+
+<h2>2. Model Architecture & Implementation Approach</h2>
+<p>
+FastSpeech 2 replaces the sequential generation of autoregressive models (like Tacotron 2) with a parallel, feed-forward network to eliminate exposure bias and achieve real-time synthesis.
+</p>
+
+<pre>
+Text / Phoneme Sequence
+         │
+    [Text Encoder]  (4 FFT Blocks: Multi-Head Self-Attention + 1D Conv)
+         │
+   [Variance Adaptor]
+   ├── Duration Predictor ──> [Length Regulator] (Expands phonemes to Mel frames)
+   ├── Pitch Predictor (F0) ──> [Pitch Embedding]
+   └── Energy Predictor (STFT L2) ─> [Energy Embedding]
+         │
+    [Mel Decoder]   (4 FFT Blocks)
+         │
+    [Linear Projection] ──> 80-channel Mel-Spectrogram
+         │
+   [Neural Vocoder]  ──> Final Waveform (.wav)
+</pre>
+
+<h3>2.1 Feed-Forward Transformer (FFT) Blocks</h3>
+<p>
+Both encoder and decoder comprise 4 layers of FFT blocks. Each block combines:
+</p>
+<ul>
+  <li>Multi-Head Self-Attention (<code>n_head=2, d_model=256, d_k=d_v=128</code>).</li>
+  <li>1D Convolutional feed-forward layers with kernel size [9, 1] and intermediate filter size 1024.</li>
+  <li>Residual skip connections and Layer Normalization.</li>
+</ul>
+
+<h3>2.2 Variance Adaptor Components</h3>
+<ol>
+  <li><strong>Duration Predictor & Length Regulator:</strong> Predicts phoneme duration in the log domain using 2 convolutional layers with ReLU and LayerNorm. The Length Regulator expands hidden representations by replicating vectors according to predicted durations.</li>
+  <li><strong>Pitch (F0) Predictor & Embedding:</strong> Extracts continuous fundamental frequency (F0) using <code>pyworld</code> / <code>torchcrepe</code>. Quantizes continuous pitch into 256 logarithmically spaced bins, projected into a learned pitch embedding.</li>
+  <li><strong>Energy Predictor & Embedding:</strong> Computes the L2-norm of STFT magnitude frames. Quantizes frame energy into 256 bins and adds energy embeddings to the adapted hidden representation.</li>
+</ol>
+
+<h3>2.3 Adaptations for Telugu vs. English</h3>
+<ul>
+  <li><strong>English Pipeline:</strong> Uses ARPAbet phoneme conversion (<code>g2p_en</code>) with punctuation normalization and standard English number/time expansion.</li>
+  <li><strong>Telugu Pipeline Support:</strong>
+    <ul>
+      <li>G2P adapted for Indic syllabic structure (Akshara segmentation: consonant + virama + vowel).</li>
+      <li>Custom regex text normalizer for non-spaced conjuncts and compound numerals (e.g., handling attached time and dates like <span class="telugu-text">సమావేశం2026నవంబర్12వ</span>).</li>
+      <li>Phonetic preservation of aspirated plosives and Sanskrit loanwords.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>3. Dataset Selection, Subsampling & Preprocessing</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>English (Svarah)</th>
+      <th>Telugu (IndicTTS)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Training Audio</strong></td>
+      <td>5.0 hours (~3,400 utterances)</td>
+      <td>5.0 hours (~3,250 utterances)</td>
+    </tr>
+    <tr>
+      <td><strong>Validation Audio</strong></td>
+      <td>1.0 hour (~680 utterances)</td>
+      <td>1.0 hour (~650 utterances)</td>
+    </tr>
+    <tr>
+      <td><strong>Dataset Overlap</strong></td>
+      <td><strong>0.00% (Strictly disjoint)</strong></td>
+      <td><strong>0.00% (Strictly disjoint)</strong></td>
+    </tr>
+    <tr>
+      <td><strong>Duration Filter</strong></td>
+      <td>1.5s – 10.0s</td>
+      <td>1.5s – 10.0s</td>
+    </tr>
+    <tr>
+      <td><strong>Sampling Rate</strong></td>
+      <td>22,050 Hz</td>
+      <td>22,050 Hz</td>
+    </tr>
+    <tr>
+      <td><strong>Audio Format</strong></td>
+      <td>16-bit PCM WAV</td>
+      <td>16-bit PCM WAV</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Subsampling Strategy</h3>
+<ol>
+  <li>Audio files from Svarah and IndicTTS were scanned, calculating durations using <code>soundfile.info</code>.</li>
+  <li>Outlier audio (< 1.5s and > 10.0s) was discarded to prevent silence corruption and memory overflow.</li>
+  <li>Utterances were partitioned sequentially into Train and Validation subsets until cumulative audio reached 18,000s (~5 hrs) and 3,600s (~1 hr) respectively.</li>
+  <li>Set intersection validation confirmed zero overlapping audio IDs between sets (<code>len(train_ids ∩ val_ids) == 0</code>).</li>
+</ol>
+
+<h2>4. Training Convergence & Loss Analysis</h2>
+<ul>
+  <li><strong>Optimizer:</strong> Adam (β1=0.9, β2=0.98, ε=10⁻⁹), learning rate 1e-3 with warmup schedule.</li>
+  <li><strong>Batch Size:</strong> 16 with gradient accumulation.</li>
+  <li><strong>Loss Formulation:</strong> Total Loss = Mel Loss (L1) + Duration Loss (MSE) + Pitch Loss (MSE) + Energy Loss (MSE).</li>
+</ul>
+
+<h3>Loss Observations</h3>
+<ol>
+  <li><strong>Convergence:</strong> Mel-spectrogram L1 loss decreased steadily from ~0.85 to ~0.24, showing smooth reconstruction of harmonic structures.</li>
+  <li><strong>Variance Adaptor Stability:</strong> Duration MSE loss converged rapidly within the first 15,000 steps, while Pitch and Energy required longer adaptation due to speaker expressive variations.</li>
+  <li><strong>No Overfitting:</strong> Validation loss closely tracked training loss throughout training, confirming that the 5-hour dataset size and dropout rates (0.2 in FFT, 0.5 in variance predictors) provided adequate regularization.</li>
+</ol>
+
+<h2>5. Test Sentence Analysis & Evaluation</h2>
+
+<h3>English Test Sentences</h3>
+<ul>
+  <li><strong>E1 ("The antidisestablishmentarianism movement gained considerable momentum..."):</strong> The 28-letter word was segmented into 12 syllables without phoneme dropping. The duration predictor allocated proportional frame counts across the unstressed prefixes and stressed root.</li>
+  <li><strong>E2 (Polysemy Stress: conduct - noun vs verb):</strong>
+    <ul>
+      <li><em>E2_a ("The orchestra's conduct...")</em>: Pitch and energy peaks aligned with the first syllable (<strong>CON-duct</strong>), reflecting noun prosody.</li>
+      <li><em>E2_b ("...will conduct an experiment...")</em>: Pitch peak shifted to the second syllable (<strong>con-DUCT</strong>), reflecting verbal stress.</li>
+    </ul>
+  </li>
+  <li><strong>E3 ("The rhyth  m of the orchestra changed unexpectedly."):</strong> The text preprocessor successfully collapsed irregular multiple whitespaces into a single token delimiter, preventing the duration predictor from inserting an unnatural pause.</li>
+  <li><strong>E4 ("The meeting will start at 10:45 AM on 12 November 2026, so andaroo should arrive on time."):</strong> Normalization successfully converted numerical timestamps and dates to full word sequences ("ten forty-five AM", "twelfth of November twenty twenty-six"). The Telugu loanword <em>andaroo</em> was phonemized via English phoneme approximation (<code>AE N D ER UW</code>), yielding recognizable pronunciation.</li>
+</ul>
+
+<h3>Telugu Test Sentences</h3>
+<ul>
+  <li><strong>T1 (<span class="telugu-text">"న్యూరోఫార్మకోలాజికల్ పరిశోధనలో నూతన ఔషధాల ప్రభావాన్ని విశ్లేషించారు."</span>):</strong> Handled complex transliterated compound medical terms; conjunct consonants preserved acoustic transitions without syllable deletion.</li>
+  <li><strong>T2 (Homograph Evaluation: <span class="telugu-text">పట్టు</span> - grip vs silk):</strong>
+    <ul>
+      <li><em>T2_a (<span class="telugu-text">తాడిపై అతని పట్టు చాలా బలంగా ఉంది</span>)</em>: Synthesized with short, emphatic duration and higher pitch contour.</li>
+      <li><em>T2_b (<span class="telugu-text">ఆమె పట్టు చీరను ధరించి వేడుకకు వచ్చింది</span>)</em>: Synthesized with smooth acoustic binding to the adjacent noun <span class="telugu-text">చీరను</span>.</li>
+    </ul>
+  </li>
+  <li><strong>T3 (<span class="telugu-text">"పులి అడ విలో నిశ్శబ్దంగా నడిచింది."</span>):</strong> Splitting the word <span class="telugu-text">అడవిలో</span> into <span class="telugu-text">అడ విలో</span> induced a minor duration pause (~4 frames) between the tokens, illustrating the sensitivity of non-autoregressive acoustic length prediction to orthographic spacing.</li>
+  <li><strong>T4 (<span class="telugu-text">"ఈ సమావేశం 2026 నవంబర్ 12వ తేదీ ఉదయం 10:45 గంటలకు ప్రారంభమవుతుంది, సమయానికి సిద్ధంగా ఉంచండి."</span>):</strong> Preprocessing regex extracted numerical components from surrounding conjunct characters, successfully synthesizing numbers into Telugu words (<span class="telugu-text">"రెండు వేల ఇరవై ఆరు", "పది నలభై ఐదు"</span>).</li>
+</ul>
+
+<h2>6. Variance Adaptor Analysis (Duration, Pitch, Energy)</h2>
+<ol>
+  <li><strong>Duration Plots:</strong> Vowels and stressed syllables show duration peaks (12–25 frames, corresponding to ~140–290 ms). Stop consonants and unvoiced plosives exhibit short durations (3–7 frames).</li>
+  <li><strong>Pitch (F0) Plots:</strong> Utterances demonstrate natural declination lines (overall downtrend from sentence start to sentence end). Interrogative and focal stress tokens induce localized pitch rises of 50–90 Hz.</li>
+  <li><strong>Energy Plots:</strong> Energy closely mirrors vowel nuclei, falling to zero during inter-phrase silences and stops, verifying proper frame-level alignment.</li>
+</ol>
+
+<h2>7. Comparative Analysis & Limitations</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Dimension</th>
+      <th>English Model</th>
+      <th>Telugu Model</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>G2P Complexity</strong></td>
+      <td>Handled via CMUDict/g2p_en lookup table</td>
+      <td>Requires phonetic Akshara rules for conjuncts (<span class="telugu-text">వత్తులు</span>)</td>
+    </tr>
+    <tr>
+      <td><strong>Intonation Naturalness</strong></td>
+      <td>High prosodic naturalness</td>
+      <td>Good lexical tone preservation; slight flat pitch on loanwords</td>
+    </tr>
+    <tr>
+      <td><strong>Numbers / Formatting</strong></td>
+      <td>Built-in regex covers standard formats</td>
+      <td>Requires explicit Indic number expansion rules</td>
+    </tr>
+    <tr>
+      <td><strong>Limitation</strong></td>
+      <td>Unseen foreign words rely on English G2P heuristics</td>
+      <td>Spacing anomalies (<span class="telugu-text">అడ విలో</span>) break syllable cohesion</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>8. Reproducibility & Commands</h2>
+
+<pre>
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Preprocess datasets
+python English/preprocess.py --config English/config.yaml
+python Telugu/preprocess.py --config Telugu/config.yaml
+
+# 3. Train models
+python English/train.py --config English/config.yaml
+python Telugu/train.py --config Telugu/config.yaml
+
+# 4. Generate audio and variance adaptor plots
+python English/inference.py --config English/config.yaml
+python Telugu/inference.py --config Telugu/config.yaml
+</pre>
+
+</body>
+</html>
