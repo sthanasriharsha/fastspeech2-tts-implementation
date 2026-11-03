@@ -1,0 +1,9 @@
+# Ignore large zip archives
+*.zip
+temp_unzip/
+fastspeech2_submission_results/
+
+# Python cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

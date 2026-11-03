@@ -1,0 +1,16 @@
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.22.0
+scipy>=1.9.0
+pyyaml>=6.0
+matplotlib>=3.6.0
+tqdm>=4.65.0
+librosa>=0.10.0
+soundfile>=0.12.0
+pyworld>=0.3.4
+g2p_en>=2.1.0
+indic-nlp-library>=0.92
+textgrid>=1.5
+tgt>=1.4.4
+tensorboard>=2.12.0
+
