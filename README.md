@@ -57,8 +57,8 @@ In accordance with **Submission Requirement 4.b** regarding checkpoint file size
 
 | Model | Architecture | Training Dataset | Checkpoint Path | Accessible Download Link |
 |---|---|---|---|---|
-| **English Model** | FastSpeech 2 + Variance Adaptor | AI4Bharat Svarah (~5h train / ~1h val) | `English/checkpoints/fastspeech2_english.pth` | [Download English Checkpoint (Google Drive / Cloud Mirror)](https://drive.google.com/drive/folders/1B_fastspeech2_checkpoints_link) |
-| **Telugu Model** | FastSpeech 2 + Variance Adaptor | IndicTTS Telugu (~5h train / ~1h val) | `Telugu/checkpoints/fastspeech2_telugu.pth` | [Download Telugu Checkpoint (Google Drive / Cloud Mirror)](https://drive.google.com/drive/folders/1B_fastspeech2_checkpoints_link) |
+| **English Model** | FastSpeech 2 + Variance Adaptor | AI4Bharat Svarah (~5h train / ~1h val) | `English/checkpoints/fastspeech2_english.pth` | [Download English Checkpoint (Google Drive)](https://drive.google.com/drive/folders/1N-ydMQxhFcuggNf132xJ39q3iV1OCSMM?usp=sharing) |
+| **Telugu Model** | FastSpeech 2 + Variance Adaptor | IndicTTS Telugu (~5h train / ~1h val) | `Telugu/checkpoints/fastspeech2_telugu.pth` | [Download Telugu Checkpoint (Google Drive)](https://drive.google.com/drive/folders/1N-ydMQxhFcuggNf132xJ39q3iV1OCSMM?usp=sharing) |
 
 > **Note for Evaluators**: If downloading checkpoints from external storage, place `fastspeech2_english.pth` into `English/checkpoints/` and `fastspeech2_telugu.pth` into `Telugu/checkpoints/`.
 
